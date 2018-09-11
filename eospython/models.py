@@ -1,12 +1,21 @@
 from datetime import datetime
 from datetime import timedelta
-from . import api
 import logging
 
 __all__ = ['Transaction', 'AccountName', 'ActionData', 'Action', 'Authority']
 
+# TODO: create schemas using either marshmallow or colander
 
-class Transaction:
+
+class ModelBase(object):
+    """Base class for all eosPython models"""
+
+
+class Asset(ModelBase):
+    pass
+
+
+class Transaction(ModelBase):
     logger = logging.getLogger(__name__)
 
     def __init__(self, *initial_data, **kwargs):
@@ -28,96 +37,63 @@ class Transaction:
         for key in kwargs:
             setattr(self, key, kwargs[key])
 
-        if self.ref_block_num == 0:
-            self.ref_block_num = self.get_ref_block_num()
-
-        if self.ref_block_prefix == 0:
-            self.ref_block_prefix = self.get_ref_block_prefix(self.ref_block_num)
+    def set_ref_data(self, chain_info, lib_info):
+        if chain_info is not None:
+            self.ref_block_num = chain_info['last_irreversible_block_num']
+        if lib_info is not None:
+            self.ref_block_prefix = lib_info['ref_block_prefix']
 
     def add_action(self, action):
         if not self.actions:
             self.actions = []
         self.actions.append(action)
 
-    def get_ref_block_num(self):
-        r = api.chain_api.get_info()
-        if r.status_code == 200:
-            return r.json()['head_block_num']
-        else:
-            Transaction.logger.error('get_ref_block_num failed')
 
-    def get_ref_block_prefix(self, block_num):
-        r = api.chain_api.get_block(block_num)
-        if r.status_code == 200:
-            return r.json()['ref_block_prefix']
-        else:
-            Transaction.logger.error('get_ref_block_prefix failed')
-
-    def send(self):
-        """Send transaction"""
-
-
-class AccountName:
+class AccountName(ModelBase):
 
     def __init__(self, name):
         """Python object representation of an EOSIO account_name"""
+        assert isinstance(name, str), "Argument name must be type string"
         self.account_name = name
 
-    def exists(self):
-        """Checks to see if an account exists"""
-        r = api.chain_api.get_account(self.account_name)
-        if r:
-            return r['account_name'] is self.account_name
-        return False
 
-
-class Authority:
+class Authority(ModelBase):
 
     def __init__(self, actor, permission):
         """Authority is the account_name and permission name used to authorize an action"""
+        assert isinstance(actor, str), "Argument `actor` must be type String"
+        assert isinstance(permission, str), "Argument `permission` must be type String"
         self.actor = actor
         self.permission = permission
 
-    def exists(self):
-        r = api.chain_api.get_account(self.account_name)
-        if r:
-            for permission in r['permissions']:
-                if permission is self.permission:
-                    return True
-        return False
 
-
-class Action:
+class Action(ModelBase):
+    logger = logging.getLogger(__name__)
 
     def __init__(self, account, action_name, data):
         """Action is used in pushing transactions to the RPC API"""
+        assert isinstance(account, str), "Argument account must be type String"
+        assert isinstance(action_name, str), "Argument action_name must be type String"
         self.account = account  # NOTE: code, is the account_name the contract is set on.
         self.name = action_name
         self.authorization = []  # NOTE: Authorization is the permission_level used for the action
         self.data = data  # NOTE: Data is the binargs received from abi_json_to_bin RPC
 
     def add_authorization(self, authority):
-        # TODO: Validate given authority
+        Action.logger.debug('Attempting to verify authority for account: %s, permission: %s' % (
+            authority.actor, authority.permission))
         self.authorization.append(authority)
 
-    # action.validate()
 
-
-class ActionData:
+class ActionData(ModelBase):
     logger = logging.getLogger(__name__)
 
     def __init__(self, code, action, args):
         """ActionData is used to get bin data from the RPC API"""
+        assert isinstance(code, str), "Argument `code` must be type `String`"
+        assert isinstance(action, str), "Argument `action` must be type `String`"
+        assert isinstance(args, dict), "Argument `args` must be type `list`"
         self.code = code
         self.action = action
         self.args = args
 
-    def get_action(self):
-        r = api.chain_api.abi_json_to_bin(self.__dict__)
-        ActionData.logger.debug('Attempting to retrieve abi binary arguments')
-        if r.status_code == 200:
-            j = r.json()
-            ActionData.logger.debug('Success: %s', j['binargs'])
-            return Action(self.code, self.action, j['binargs'])
-        else:
-            ActionData.logger.error('Was unable to parse binargs from abi_json_to_bin')

@@ -7,7 +7,6 @@
 
 
 import logging
-from datetime import datetime
 
 logger = logging.getLogger()
 # TODO: setup a method for switching the code from development to production
