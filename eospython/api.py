@@ -1,21 +1,11 @@
 import logging
 import requests
-import json
 from urllib import parse
 from .models import *
 from .exceptions import *
 from .util import todict
 
 __all__ = ['WalletAPI', 'ChainAPI', 'API']
-
-
-class Singleton(type):
-    _instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__()
-        return cls._instances[cls]
 
 
 class API:
@@ -60,6 +50,9 @@ class API:
             return self.chain.get_account(account_name)
         except ChainAPIException: # NOTE: This exception is too specific
             raise AccountDoesNotExistException
+
+    def create_account(self, account_name):
+        pass
 
     def does_action_exist(self, account_name, action_name):
         abi_info = self.chain.get_abi(account_name)
@@ -121,10 +114,11 @@ class APIBase:
         self.params = {}
         self.logger = logging.getLogger(__name__)
 
-    def post(self, endpoint, data=None, params={}, headers={}):
+    def post(self, endpoint, data=None, params={}, headers={}, json={}):
         m_headers = {**self.base_headers, **headers}
         m_params = {**self.params, **params}
-        return requests.post(url=parse.urljoin(self.base_url, endpoint), data=data, headers=m_headers, params=m_params)
+        return requests.post(url=parse.urljoin(self.base_url, endpoint), data=data, headers=m_headers, params=m_params,
+                             json=json)
 
 
 class WalletAPI(APIBase):
@@ -138,8 +132,8 @@ class WalletAPI(APIBase):
 
     # TODO: to improve exception handling, it might be best to create an error handler function
     # that throws more specific API exceptions depending on the API
-    def post(self, endpoint, data=None, params={}, headers={}):
-        response = super(WalletAPI, self).post(endpoint, data, params, headers)
+    def post(self, endpoint, data=None, params={}, headers={}, json={}):
+        response = super(WalletAPI, self).post(endpoint, data, params, headers, json)
         if response.status_code >= 400:
             self.logger.error('HTTP POST request failed data sent: %s', data)
             raise WalletAPIException(response=response)
@@ -149,8 +143,8 @@ class WalletAPI(APIBase):
         return self.post('create', data="\"%s\"" % name)
 
     def unlock(self, password, name='default'):
-        body = json.dumps([name, password])
-        return self.post('unlock', data=body)
+        body = [name, password]
+        return self.post('unlock', json=body)
 
     def lock(self, name='default'):
         return self.post('lock', data="\"%s\"" % name)
@@ -159,26 +153,26 @@ class WalletAPI(APIBase):
         return self.post('list_wallets')
 
     def list_keys(self, password, name='default'):
-        body = json.dumps([name, password])
-        return self.post('list_keys', data=body)
+        body = [name, password]
+        return self.post('list_keys', json=body)
 
     def get_public_keys(self):
         return self.post('get_public_keys')
 
     def create_key(self, key_type="K1", name="default"):
-        body = json.dumps([name, key_type])
-        return self.post('create_key', data=body)
+        body = [name, key_type]
+        return self.post('create_key', json=body)
 
     def import_key(self, private_key, name='default'):
-        body = json.dumps([name, private_key])
-        return self.post('import_key', data=body)
+        body = [name, private_key]
+        return self.post('import_key', json=body)
 
     def set_timeout(self, time_out):
         return self.post('set_timeout', data=str(time_out))
 
     def sign_transaction(self, transaction, keys, chain_id=""):
-        body = json.dumps([todict(transaction), keys, chain_id])
-        return self.post('sign_transaction', data=body)
+        body = [todict(transaction), keys, chain_id]
+        return self.post('sign_transaction', json=body)
 
 
 class ChainAPI(APIBase):
@@ -190,69 +184,68 @@ class ChainAPI(APIBase):
 
     # TODO: to improve exception handling, it might be best to create an error handler function
     # that throws more specific API exceptions depending on the API
-    def post(self, endpoint, data=None, params={}, headers={}):
+    def post(self, endpoint, data=None, params={}, headers={}, json={}):
         self.logger.error('HTTP POST request data: %s', data)
-        response = super(ChainAPI, self).post(endpoint, data, params, headers)
+        response = super(ChainAPI, self).post(endpoint, data, params, headers, json)
         if response.status_code >= 400:
             raise ChainAPIException(response=response)
         return response.json()
 
     def get_currency_balance(self, account, code='eosio.token', symbol='TLOS'):
-        body = json.dumps({'code': code, 'account': account, 'symbol': symbol})
-        return self.post('get_currency_balance', data=body)
+        body = {'code': code, 'account': account, 'symbol': symbol}
+        return self.post('get_currency_balance', json=body)
 
     def get_currency_stats(self, account, symbol='TLOS'):
-        body = json.dumps({'code': 'eosio.token', 'account': account, 'symbol': symbol})
-        return self.post('get_currency_stats', data=body)
+        body = {'code': 'eosio.token', 'account': account, 'symbol': symbol}
+        return self.post('get_currency_stats', json=body)
 
     def get_block_header_state(self, block_num):
-        body = json.dumps({'block_num_or_id': block_num})
-        return self.post('get_block_header_state', data=body)
+        body = {'block_num_or_id': block_num}
+        return self.post('get_block_header_state', json=body)
 
     def get_info(self):
         return self.post('get_info')
 
     def get_block(self, block_num_or_id):
-        body = json.dumps({'block_num_or_id': block_num_or_id})
-        return self.post('get_block', data=body)
+        body = {'block_num_or_id': block_num_or_id}
+        return self.post('get_block', json=body)
 
     def get_abi(self, account_name):
-        body = json.dumps({'account_name': account_name})
-        return self.post('get_abi', data=body)
+        body = {'account_name': account_name}
+        return self.post('get_abi', json=body)
 
     def get_code(self, account_name):
-        body = json.dumps({'account_name': account_name})
-        return self.post('get_code', data=body)
+        body = {'account_name': account_name}
+        return self.post('get_code', json=body)
 
     def abi_json_to_bin(self, action_data):
-        return self.post('abi_json_to_bin', data=json.dumps(todict(action_data)))
+        return self.post('abi_json_to_bin', json=action_data)
 
     def abi_bin_to_json(self, bin_data):
-        return requests.post('abi_bin_to_json', data=bin_data)
+        return self.post('abi_bin_to_json', json=bin_data)
 
     def get_raw_code_and_abi(self, account_name):
-        body = json.dumps({'account_name': account_name})
-        return self.post('get_raw_code_and_abi', data=body)
+        body = {'account_name': account_name}
+        return self.post('get_raw_code_and_abi', json=body)
 
     def get_account(self, account_name):
-        body = json.dumps({'account_name': account_name})
-        return self.post('get_account', data=body)
+        body = {'account_name': account_name}
+        return self.post('get_account', json=body)
 
     def get_table_rows(self, code, scope, table, output_json=True, limit=1000, lower_bound=0, upper_bound=-1):
-        body = json.dumps({'code': code, 'scope': scope, 'table': table, 'json': output_json, 'limit': limit,
+        body = {'code': code, 'scope': scope, 'table': table, 'json': output_json, 'limit': limit,
                            'lower_bound': lower_bound,
-                           'upper_bound': upper_bound})
-        return self.post('get_table_rows', data=body)
+                           'upper_bound': upper_bound}
+        return self.post('get_table_rows', json=body)
 
     def get_producers(self, limit=1000, lower_bound='', output_json=True):
-        body = json.dumps({'limit': limit, 'lower_bound': lower_bound, 'json': output_json})
-        return self.post('get_producers', data=body)
+        body = {'limit': limit, 'lower_bound': lower_bound, 'json': output_json}
+        return self.post('get_producers', json=body)
 
     def get_required_keys(self, transaction, available_keys):
-        body = json.dumps({'transaction': todict(transaction), 'available_keys': available_keys})
-        return self.post('get_required_keys', data=body)
+        body = {'transaction': todict(transaction), 'available_keys': available_keys}
+        return self.post('get_required_keys', json=body)
 
     def push_transaction(self, transaction):
-        body = json.dumps(
-            {'transaction': transaction, 'signatures': transaction['signatures'], 'compression': 'none'})
-        return self.post('push_transaction', data=body)
+        body = {'transaction': transaction, 'signatures': transaction['signatures'], 'compression': 'none'}
+        return self.post('push_transaction', json=body)

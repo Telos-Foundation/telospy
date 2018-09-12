@@ -75,8 +75,11 @@ class Action(ModelBase):
         assert isinstance(account, str), "Argument account must be type String"
         assert isinstance(action_name, str), "Argument action_name must be type String"
         self.account = account  # NOTE: code, is the account_name the contract is set on.
+        self.code = account
         self.name = action_name
+        self.action = action_name
         self.authorization = []  # NOTE: Authorization is the permission_level used for the action
+        self.args = {}
         self.data = data  # NOTE: Data is the binargs received from abi_json_to_bin RPC
 
     def add_authorization(self, authority):
