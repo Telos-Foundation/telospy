@@ -5,10 +5,11 @@ from requests.exceptions import RequestException
 
 __all__ = ['APIResponseException', 'WalletAPIException', 'ChainAPIException', 'APINotConfigured', 'ModelException',
            'PermissionDoesNotExistException', 'AccountDoesNotExistException', 'AccountABIDoesNotExistException',
-           'ActionDoesNotExistException']
+           'ActionDoesNotExistException', 'AccountAlreadyExistsException']
 
+# TODO: write handlers, that are used by the API(s) to raise verbose exceptions based on
+# information returned by the RPC API
 
-# TODO: write handlers, that are used by the API(s) to raise verbose exceptions based on information returned by the RPC API
 
 def wallet_exception_raiser():
     pass
@@ -302,6 +303,10 @@ class PermissionDoesNotExistException(ModelException):
 
 
 class AccountDoesNotExistException(ModelException):
+    """Account DNE Exception thrown when a specified account_name does not exist"""
+
+
+class AccountAlreadyExistsException(ModelException):
     """Account DNE Exception thrown when a specified account_name does not exist"""
 
 

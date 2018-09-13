@@ -2,7 +2,7 @@ from datetime import datetime
 from datetime import timedelta
 import logging
 
-__all__ = ['Transaction', 'AccountName', 'ActionData', 'Action', 'Authority']
+__all__ = ['Transaction', 'AccountName', 'Action', 'Permission']
 
 # TODO: create schemas using either marshmallow or colander
 
@@ -57,7 +57,10 @@ class AccountName(ModelBase):
         self.account_name = name
 
 
-class Authority(ModelBase):
+# TODO: Create an authority object that can be used for updating account permissions
+
+
+class Permission(ModelBase):
 
     def __init__(self, actor, permission):
         """Authority is the account_name and permission name used to authorize an action"""
@@ -70,8 +73,12 @@ class Authority(ModelBase):
 class Action(ModelBase):
     logger = logging.getLogger(__name__)
 
-    def __init__(self, account, action_name, data):
+    def __init__(self, account, action_name, args, authorizations=[]):
         """Action is used in pushing transactions to the RPC API"""
+        if isinstance(authorizations, Permission):
+            authorizations = [authorizations]
+        elif not isinstance(authorizations, list):
+            raise AssertionError('authorizations must be a list of Authority or a single Authority')
         assert isinstance(account, str), "Argument account must be type String"
         assert isinstance(action_name, str), "Argument action_name must be type String"
         self.account = account  # NOTE: code, is the account_name the contract is set on.
@@ -79,24 +86,12 @@ class Action(ModelBase):
         self.name = action_name
         self.action = action_name
         self.authorization = []  # NOTE: Authorization is the permission_level used for the action
-        self.args = {}
-        self.data = data  # NOTE: Data is the binargs received from abi_json_to_bin RPC
+        self.args = args
+        self.data = None  # NOTE: Data is the binargs received from abi_json_to_bin RPC
+
+        for auth in authorizations:
+            self.add_authorization(auth)
 
     def add_authorization(self, authority):
-        Action.logger.debug('Attempting to verify authority for account: %s, permission: %s' % (
-            authority.actor, authority.permission))
         self.authorization.append(authority)
-
-
-class ActionData(ModelBase):
-    logger = logging.getLogger(__name__)
-
-    def __init__(self, code, action, args):
-        """ActionData is used to get bin data from the RPC API"""
-        assert isinstance(code, str), "Argument `code` must be type `String`"
-        assert isinstance(action, str), "Argument `action` must be type `String`"
-        assert isinstance(args, dict), "Argument `args` must be type `list`"
-        self.code = code
-        self.action = action
-        self.args = args
 

@@ -11,14 +11,14 @@ if sys.argv[-1] == 'publish':
     os.system('twine upload dist/*')
     sys.exit()
 
-packages = ['eosPython']
+packages = ['telospy']
 
 requires = [
     'requests>=2.19.1'
 ]
 
 about = {}
-with open(os.path.join(here, 'eosPython', '__version__.py'), 'r', 'utf-8') as f:
+with open(os.path.join(here, 'telospy', '__version__.py'), 'r', 'utf-8') as f:
     exec(f.read(), about)
 
 with open('README.md', 'r', 'utf-8') as f:
@@ -37,8 +37,8 @@ setup(
     author_email=about['__author_email__'],
     url=about['__url__'],
     packages=packages,
-    package_data={'': ['LICENSE', 'NOTICE'], 'requests': ['*.pem']},
-    package_dir={'eosPython': 'eosPython'},
+    package_data={'': ['LICENSE', 'NOTICE'], 'telospy': ['*.pem']},
+    package_dir={'telospy': 'telospy'},
     include_package_data=True,
     python_requires=">=2.6, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*",
     install_requires=requires,

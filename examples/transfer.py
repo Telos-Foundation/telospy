@@ -1,12 +1,3 @@
-# telospy
-Lightweight python package for working with EOSIO based RPC APIs.
-
-# Install
-
-`pip3 install telospy`
-
-## Example
-```
 from telospy.api import API
 from telospy.models import Action
 from telospy.models import Permission
@@ -29,5 +20,3 @@ transfer_action = Action(account='eosio.token', action_name='transfer', args=arg
 receipt = api.send_transaction(transfer_action)
 
 print(receipt)
-```
-

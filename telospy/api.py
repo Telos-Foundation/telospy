@@ -3,7 +3,7 @@ import requests
 from urllib import parse
 from .models import *
 from .exceptions import *
-from .util import todict
+from .util import to_dict
 
 __all__ = ['WalletAPI', 'ChainAPI', 'API']
 
@@ -48,13 +48,15 @@ class API:
     def get_account_info(self, account_name):
         try:
             return self.chain.get_account(account_name)
-        except ChainAPIException: # NOTE: This exception is too specific
-            raise AccountDoesNotExistException
+        except ChainAPIException:  # NOTE: This exception is too specific
+            raise AccountDoesNotExistException('The account does not exist on this chain')
 
-    def create_account(self, account_name):
-        pass
-
-    def does_action_exist(self, account_name, action_name):
+    def does_action_exist(self, account_name, action_name, account_info={}):
+        assert isinstance(account_name, str), "`account_name` must be a String"
+        if isinstance(account_info, dict) and 'account_name' in account_info:
+            assert account_name == account_info['account_name'], \
+                'the `account_information given does not match the provided account_name`'
+            account_name = account_info['account_name']
         abi_info = self.chain.get_abi(account_name)
         if 'abi' not in abi_info:
             raise AccountABIDoesNotExistException('account_name `%s` does not have an ABI' % account_name)
@@ -72,31 +74,76 @@ class API:
                     return True
         return False
 
-    def action_data_to_action(self, action_data):
-        r = self.chain.abi_json_to_bin(action_data)
-        return Action(action_data.code, action_data.action, r['binargs'])
+    def get_bin_data(self, action):
+        return self.chain.abi_json_to_bin(action)['binargs']
 
-    def send_transaction(self, action_data, authority):
+    ####################
+    # Basic Chain Commands
+    ####################
+
+    # TODO: refactor to be more verbose. Where owner and active can be either keys or account permissions
+    # TODO: refactor this use new Authority model instead of dictionaries
+    def create_account(self, creator, account_name, owner, active='', stake_net='1000.0000 TLOS',
+                       stake_cpu='1000.0000 TLOS',
+                       ram_kb=1024, permission='active', transfer=True):
+        try:
+            self.get_account_info(account_name)
+            raise AccountAlreadyExistsException('The account already exists on this chain')
+        except AccountDoesNotExistException:
+            pass
+
+        owner_auth = {"threshold": "1", "keys": [{"key": owner, "weight": 1}], 'accounts': [], "waits": []}
+        if active is '':
+            active_auth = owner_auth
+        else:
+            active_auth = {"threshold": "1", "keys": [{"key": owner, "weight": 1}], 'accounts': [], "waits": []}
+
+        create_action = Action('eosio', 'newaccount',
+                               {'creator': creator, 'name': account_name, 'owner': owner_auth, 'active': active_auth},
+                               Permission(creator, permission))
+        buy_ram_action = Action('eosio', 'buyrambytes',
+                                {'payer': creator, 'receiver': account_name, 'bytes': ram_kb * 1024},
+                                Permission(creator, permission))
+        delegate_bw_action = Action('eosio', 'delegatebw',
+                                    {'from': creator, 'receiver': account_name, 'stake_net_quantity': stake_net,
+                                     'stake_cpu_quantity': stake_cpu, 'transfer': transfer},
+                                    Permission(creator, permission))
+
+        return self.send_transaction(actions=[create_action, buy_ram_action, delegate_bw_action])
+
+    def set_contract(self):
+        pass
+
+    def transfer(self, sender, recipient, amount, memo):
+        pass
+
+    def updateauth(self):
+        pass
+
+    def send_transaction(self, actions):
         """Send a transaction with a single action in it."""
-        assert isinstance(action_data, ActionData), "Argument `action` must be of type(ActionData)"
-        assert isinstance(authority, Authority), "Argument `authority` must be of type(Authority)"
+        if isinstance(actions, Action):
+            actions = [actions]
+        elif not isinstance(actions, list):
+            raise AssertionError('actions must be a list of Actions or a single Action')
+
         chain_info, lib_info = self.get_chain_lib_info()
 
-        code_info = self.get_account_info(action_data.code) # NOTE: this method will raise an exception if it fails
-        auth_info = self.get_account_info(authority.actor)
+        for action in actions:
+            for auth in action.authorization:
+                auth_info = self.get_account_info(auth.actor)
+                if not self.does_permission_exist(auth_info, auth.permission):
+                    raise PermissionDoesNotExistException('account_name `%s` does not have permission `%s`'
+                                                          % (auth.actor, auth.permission))
+            code_info = self.get_account_info(action.account)  # NOTE: this method will raise an exception if it fails
 
-        if not self.does_permission_exist(auth_info, authority.permission):
-            raise PermissionDoesNotExistException('account_name `%s` does not have permission `%s`'
-                                                  % (authority.actor, authority.permission))
+            if not self.does_action_exist(action.code, action.name, code_info):
+                raise ActionDoesNotExistException('`%s` ABI does not contain an action named `%s`'
+                                                  % (action.code, action.name))
+            action.data = self.get_bin_data(to_dict(action))
+            self.logger.debug('action bin data: {}'.format(action.data))
 
-        if not self.does_action_exist(action_data.code, action_data.action):
-            raise ActionDoesNotExistException('`%s` ABI does not contain an action named `%s`'
-                                              % (action_data.code, action_data.action))
-
-        action = self.action_data_to_action(action_data)
-        action.add_authorization(authority)
-
-        trx = Transaction(actions=[action])
+        trx = Transaction(actions=actions)
         trx.set_ref_data(chain_info, lib_info)
 
         key_for_signing = self.chain.get_required_keys(trx, self.wallet.get_public_keys())
@@ -115,6 +162,7 @@ class APIBase:
         self.logger = logging.getLogger(__name__)
 
     def post(self, endpoint, data=None, params={}, headers={}, json={}):
+        self.logger.debug(json)
         m_headers = {**self.base_headers, **headers}
         m_params = {**self.params, **params}
         return requests.post(url=parse.urljoin(self.base_url, endpoint), data=data, headers=m_headers, params=m_params,
@@ -125,7 +173,7 @@ class WalletAPI(APIBase):
 
     def __init__(self, base_url, version):
         """Wallet API for communicating with EOSIO wallet RPCs."""
-        headers = {'Accept': 'application/json','Content-Type': 'application/json'}
+        headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
         APIBase.__init__(self, headers, parse.urljoin(base_url, '/%s/wallet/' % version))
 
         self.logger.debug('Constructing %s', __name__)
@@ -135,7 +183,6 @@ class WalletAPI(APIBase):
     def post(self, endpoint, data=None, params={}, headers={}, json={}):
         response = super(WalletAPI, self).post(endpoint, data, params, headers, json)
         if response.status_code >= 400:
-            self.logger.error('HTTP POST request failed data sent: %s', data)
             raise WalletAPIException(response=response)
         return response.json()
 
@@ -171,7 +218,7 @@ class WalletAPI(APIBase):
         return self.post('set_timeout', data=str(time_out))
 
     def sign_transaction(self, transaction, keys, chain_id=""):
-        body = [todict(transaction), keys, chain_id]
+        body = [to_dict(transaction), keys, chain_id]
         return self.post('sign_transaction', json=body)
 
 
@@ -179,13 +226,12 @@ class ChainAPI(APIBase):
 
     def __init__(self, base_url, version):
         """Chain API class for communicating with EOSIO based chain RPCs."""
-        headers = {'Accept': 'application/json','Content-Type': 'application/json'}
+        headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
         APIBase.__init__(self, headers, parse.urljoin(base_url, '/%s/chain/' % version))
 
     # TODO: to improve exception handling, it might be best to create an error handler function
     # that throws more specific API exceptions depending on the API
     def post(self, endpoint, data=None, params={}, headers={}, json={}):
-        self.logger.error('HTTP POST request data: %s', data)
         response = super(ChainAPI, self).post(endpoint, data, params, headers, json)
         if response.status_code >= 400:
             raise ChainAPIException(response=response)
@@ -214,12 +260,20 @@ class ChainAPI(APIBase):
         body = {'account_name': account_name}
         return self.post('get_abi', json=body)
 
+    def set_abi(self, account_name, abi_bin):
+        body = {'account': account_name, 'abi': abi_bin}
+        return self.post('set_abi', json=body)
+
     def get_code(self, account_name):
         body = {'account_name': account_name}
         return self.post('get_code', json=body)
 
-    def abi_json_to_bin(self, action_data):
-        return self.post('abi_json_to_bin', json=action_data)
+    def set_code(self, account, code, vmtype=0, vmversion=0):
+        body = {'account': account, 'vmtype': vmtype, 'vmversion': vmversion, 'code': code}
+        return self.post('set_code', json=body)
+
+    def abi_json_to_bin(self, action):
+        return self.post('abi_json_to_bin', json=action)
 
     def abi_bin_to_json(self, bin_data):
         return self.post('abi_bin_to_json', json=bin_data)
@@ -234,8 +288,8 @@ class ChainAPI(APIBase):
 
     def get_table_rows(self, code, scope, table, output_json=True, limit=1000, lower_bound=0, upper_bound=-1):
         body = {'code': code, 'scope': scope, 'table': table, 'json': output_json, 'limit': limit,
-                           'lower_bound': lower_bound,
-                           'upper_bound': upper_bound}
+                'lower_bound': lower_bound,
+                'upper_bound': upper_bound}
         return self.post('get_table_rows', json=body)
 
     def get_producers(self, limit=1000, lower_bound='', output_json=True):
@@ -243,7 +297,7 @@ class ChainAPI(APIBase):
         return self.post('get_producers', json=body)
 
     def get_required_keys(self, transaction, available_keys):
-        body = {'transaction': todict(transaction), 'available_keys': available_keys}
+        body = {'transaction': to_dict(transaction), 'available_keys': available_keys}
         return self.post('get_required_keys', json=body)
 
     def push_transaction(self, transaction):
