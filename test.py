@@ -1,7 +1,7 @@
-from eospython.models import *
-from eospython.api import API
+from telospy.models import *
+from telospy.api import API
 from pprint import pprint
-from eospython.util import to_dict
+from telospy.util import to_dict
 from binascii import hexlify, unhexlify
 import json
 
