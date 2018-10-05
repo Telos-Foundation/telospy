@@ -14,7 +14,7 @@ if sys.argv[-1] == 'publish':
 packages = ['telospy']
 
 requires = [
-    'requests>=2.19.1'
+    'requests>=2.19.1', 'numpy>=1.15.1'
 ]
 
 about = {}

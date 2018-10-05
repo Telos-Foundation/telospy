@@ -112,13 +112,16 @@ class API:
         return self.send_transaction(actions=[create_action, buy_ram_action, delegate_bw_action])
 
     def set_contract(self):
-        pass
+        raise NotImplementedError('set_contract is currently not implemented')
 
     def transfer(self, sender, recipient, amount, memo):
-        pass
+        args = {'from': sender, 'to': recipient, 'quantity': amount, 'memo': memo}
+        permission = Permission(sender, 'active')
+        transfer_action = Action(account='eosio.token', action_name='transfer', args=args, authorizations=permission)
+        return self.send_transaction(actions=[transfer_action])
 
-    def updateauth(self):
-        pass
+    def update_auth(self):
+        raise NotImplementedError('update_auth is not currently implemented')
 
     def send_transaction(self, actions):
         """Send a transaction with a single action in it."""
